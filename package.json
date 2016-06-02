@@ -1,0 +1,27 @@
+{
+  "name": "cassandra-changeset",
+  "version": "1.0.0",
+  "description": "NodeJS module for Cassandra changesets",
+  "contributors": [
+      "Rob Higgins <higginsrob@gmail.com> (https://github.com/higginsrob)",
+      "Nick Riley <nick@sparkida.com> (http://github.com/sparkida)"
+  ],
+  "keywords": [
+    "cassandra",
+    "changeset"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vertebrae-org/cassandra-changeset.git"
+  },
+  "dependencies": {
+    "cassandra-driver": "^3.0.2",
+    "co": "^4.6.0",
+    "co-fs": "^1.2.0",
+    "co-reduce": "^1.0.1",
+    "commander": "^2.9.0",
+    "winston": "^2.2.0"
+  },
+  "license": "MIT",
+  "bin": "bin/changeset-cli.js"
+}
