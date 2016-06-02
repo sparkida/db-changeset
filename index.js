@@ -31,7 +31,6 @@ module.exports = class Changeset {
 
     listChangesets() {
         return co(function*() {
-            console.log('listing changesets');
             var dir = path.resolve(client.config.changesetDirectory);
             var exists = yield fs.exists(dir);
             if (!exists) {
@@ -60,7 +59,6 @@ module.exports = class Changeset {
             if (files.length < 1) {
                 throw new Error('No changeset files found');
             }
-            console.log(files);
             return files;
         });
     }
