@@ -6,7 +6,6 @@ const moduleVersion = require('../package.json').version;
 const log = require('winston');
 const path = require('path');
 const run = (config) => {
-    console.log(config);
     var client = new Client(config);
     client.runScript()
         .then((version) => {
