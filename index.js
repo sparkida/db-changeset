@@ -5,8 +5,12 @@ const fs = require('co-fs');
 const reduce = require('co-reduce');
 const cassandra = require('cassandra-driver');
 const path = require('path');
-const log = require('winston');
 const format = require('util').format;
+const winston = require('winston');
+const consoleLogger = new winston.transports.Console({colorize: true});
+const log = new winston.Logger({
+    transports: [consoleLogger]
+});
 
 var client;
 
@@ -25,11 +29,11 @@ module.exports = class Changeset {
             log.level = 'info';
         } else {
             //disable logging
-            log.remove(log.transports.Console);
+            log.remove(consoleLogger);
         }
     }
 
-    listChangesets() {
+    getChangesets() {
         return co(function*() {
             var dir = path.resolve(client.config.changesetDirectory);
             var exists = yield fs.exists(dir);
@@ -37,9 +41,13 @@ module.exports = class Changeset {
                 throw new Error('Could not find changeset directory:', dir);
             }
             var files = yield fs.readdir(dir);
+            var targetVersion = client.config.version || 0;
             files = yield reduce(files, function*(list, file) {
                 var parts = file.split('.');
                 var version = parseInt(parts[0]);
+                if (version < targetVersion) {
+                    return list;
+                }
                 var ext = parts[1];
                 if ((ext !== 'js' && ext !== 'cql') || isNaN(version)) {
                     return list;
@@ -63,7 +71,7 @@ module.exports = class Changeset {
         });
     }
 
-    createVersionTable() {
+    createTable() {
         return co(function*() {
             var versionQuery = 'SELECT release_version FROM system.local';
             var results = yield client.runQuery(versionQuery);
@@ -92,17 +100,18 @@ module.exports = class Changeset {
             } else {
                 var createQuery = format(
                         'CREATE TABLE %s.schema_version ('
-                        + 'version INT, date TIMESTAMP, PRIMARY KEY (version))',
+                        + 'zero INT, version INT, date TIMESTAMP, PRIMARY KEY (zero, version)'
+                        + ') WITH CLUSTERING ORDER BY (version DESC)',
                         client.dbConfig.keyspace);
-                log.debug('creating the "schema_version" table...');
+                log.info('creating the "schema_version" table...');
                 return yield client.runQuery(createQuery);
             }
         });
     }
 
-    getSchemaVersion() {
+    getVersion() {
         return co(function*() {
-            yield client.createVersionTable();
+            yield client.createTable();
             log.debug('Fetching version info...');
             var versionQuery = format('SELECT version FROM %s.schema_version LIMIT 1', client.dbConfig.keyspace);
             var results = yield client.runQuery(versionQuery);
@@ -130,6 +139,7 @@ module.exports = class Changeset {
         });
     }
 
+
     /**
      * changesetItem: {file: <filepath>, ext: <extension>, version: ...}
      */
@@ -138,18 +148,24 @@ module.exports = class Changeset {
         var version = changesetItem.version;
         var ext = changesetItem.ext;
         var updateChangesetVersion = format(
-                'INSERT INTO %s.schema_version (version, date) VALUES (%d, %d)',
-                client.dbConfig.keyspace, version, Date.now());
+                'INSERT INTO %s.schema_version (zero, version, date) VALUES (0, %d, %d)',
+                client.dbConfig.keyspace, version, Date.now()
+            );
         return co(function*() {
             log.info('Applying changeset:', file);
-            if (ext === 'js') {
+            //if updateVersion is present, we want to blindly set the changeset version
+            //assuming this is the current state of the model
+            if (client.config.updateVersion) {
+                log.info('Setting schema_version to', version, changesetItem);
+                yield client.runQuery(updateChangesetVersion, version);
+            } else if (ext === 'js') {
                 yield require(file)(client);
                 yield client.runQuery(updateChangesetVersion, version);
             } else {
                 var queryStrings = yield fs.readFile(file, 'utf-8');
                 queryStrings = queryStrings
                     .split('---')
-                    .map(function(item) {
+                    .map((item) => {
                         return item.trim();
                     });
                 queryStrings.push(updateChangesetVersion);
@@ -161,7 +177,7 @@ module.exports = class Changeset {
     }
 
     runChanges() {
-        return client.createVersionTable().then(() => {
+        return client.createTable().then(() => {
             var changesets = client.changesetFiles.filter((item) => {
                 return item.version > client.schemaVersion;
             }).sort((a, b) => {
@@ -177,9 +193,9 @@ module.exports = class Changeset {
                 log.info('No new changesets. Schema version is ' + client.schemaVersion);
                 return client.schemaVersion;
             }
-            var versions = changesets.map(function(item) {
-                return item.version;
-            });
+            var versions = changesets.map((item) => {
+                    return item.version;
+                });
             versions.unshift(client.schemaVersion);
             log.info('Changing database', versions.join(' -> '));
             return co(function*() {
@@ -205,14 +221,19 @@ module.exports = class Changeset {
                 }
             });
             client.db.on('log', (level, className, message) => {
-                if (level === 'info') {
+                if (level === 'info' && client.config.verbose) {
+                    log.info(message);
+                } else if (level !== 'info' && client.config.debug) {
                     log.debug(message);
-                } else {
-                    log.warn(message);
                 }
             });
-            client.changesetFiles = yield client.listChangesets();
-            client.schemaVersion = yield client.getSchemaVersion();
+            if (client.config.updateVersion) {
+                log.info('Updating current schema version');
+                yield client.createTable();
+                return yield client.applyChangeset({version: client.config.updateVersion});
+            }
+            client.changesetFiles = yield client.getChangesets();
+            client.schemaVersion = yield client.getVersion();
             return yield client.runChanges();
         });
     }
