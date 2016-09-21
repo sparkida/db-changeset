@@ -9,6 +9,7 @@ module.exports = {
     },
     postgres: {
         host: 'vm.vertebrae.io',
+        db: 'test',
         username: 'postgres',
         password: 'postgres',
         dialect: 'postgres'

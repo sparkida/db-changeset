@@ -16,7 +16,6 @@ const run = (config) => {
     client.runScript()
         .then((version) => {
             log.info('success');
-            // success
             process.exit();
         })
         .catch((err) => {
@@ -28,11 +27,12 @@ const run = (config) => {
 var ran = false;
 commander
     .version(moduleVersion)
+    // <flag> === required && [flag] === optional
     .usage('[options] <config>')
     .option('-n, --name <name>', 'database instance found in config')
+    .option('-d, --directory <directory>', 'directory to look for changeset files')
     .option('-v, --verbose', 'show basic logging information')
     .option('--debug', 'show all logging information')
-    .option('-d, --directory <directory>', 'directory to look for changeset files')
     .option('-t, --target [version]', 'target a version to run changesets from')
     .option('-u, --update [updateVersion]', 'update schema_version table to target version')
     .action((dbConfig, options) => {

@@ -3,7 +3,7 @@
 const co = require('co');
 const fs = require('co-fs');
 const reduce = require('co-reduce');
-const cassandra = require('cassandra-driver');
+const Sequelize = require('sequelize');
 const path = require('path');
 const format = require('util').format;
 const winston = require('winston');
@@ -12,7 +12,7 @@ const log = new winston.Logger({
     transports: [consoleLogger]
 });
 
-var client;
+var client, sequelize;
 
 module.exports = class Changeset {
 
@@ -49,7 +49,7 @@ module.exports = class Changeset {
                     return list;
                 }
                 var ext = parts[1];
-                if ((ext !== 'js' && ext !== 'cql') || isNaN(version)) {
+                if ((ext !== 'js' && ext !== 'sql') || isNaN(version)) {
                     return list;
                 }
                 var filepath = path.join(dir, file);
@@ -73,36 +73,30 @@ module.exports = class Changeset {
 
     createTable() {
         return co(function*() {
-            var versionQuery = 'SELECT release_version FROM system.local';
+            //SELECT version(); vs SHOW server_version;
+            var versionQuery = 'SHOW server_version';
             var results = yield client.runQuery(versionQuery);
-            var cassandraVersion = results.rows[0] && results.rows[0].release_version;
-            if (!cassandraVersion) {
-                throw new Error('Could not determine the version of Cassandra!');
+            var postgresVersion = results[0].server_version;
+            if (!postgresVersion) {
+                throw new Error('Could not determine the version of Postgres!');
             }
-            log.debug('Cassandra version: ' + cassandraVersion);
-            var isVersion3 = cassandraVersion.substr(0, 2) == '3.';
-            var schemaKeyspace = isVersion3 ? 'system_schema' : 'system';
-            var tablesTable = isVersion3 ? 'tables' : 'schema_columnfamilies';
-            var tableNameColumn = isVersion3 ? 'table_name' : 'columnfamily_name';
-            log.debug('schemaKeyspace: ' + schemaKeyspace);
-            log.debug('tablesTable: ' + tablesTable);
-            log.debug('tableNameColumn: ' + tableNameColumn);
+            log.debug('Postgres version: ' + postgresVersion);
             var tableQuery = format(
-                    "SELECT %s FROM %s.%s WHERE keyspace_name='%s'",
-                    tableNameColumn, schemaKeyspace, tablesTable, client.dbConfig.keyspace);
+                "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"
+            );
             results = yield client.runQuery(tableQuery);
-            var tableNames = results.rows.map((row) => {
-                return row[tableNameColumn];
+            var tableNames = results.map((row) => {
+                return row[0];
             });
             if (tableNames.indexOf('schema_version') > -1) {
                 log.debug('Table "schema_version" already exists.');
                 return;
             } else {
                 var createQuery = format(
-                        'CREATE TABLE %s.schema_version ('
-                        + 'zero INT, version INT, date TIMESTAMP, PRIMARY KEY (zero, version)'
-                        + ') WITH CLUSTERING ORDER BY (version DESC)',
-                        client.dbConfig.keyspace);
+                    'CREATE TABLE %s.schema_version'
+                    + '(zero INT, version INT, date DATE, PRIMARY KEY (zero, version))',
+                    client.dbConfig.db
+                );
                 log.info('creating the "schema_version" table...');
                 return yield client.runQuery(createQuery);
             }
@@ -113,7 +107,7 @@ module.exports = class Changeset {
         return co(function*() {
             yield client.createTable();
             log.debug('Fetching version info...');
-            var versionQuery = format('SELECT version FROM %s.schema_version LIMIT 1', client.dbConfig.keyspace);
+            var versionQuery = format('SELECT version FROM %s.schema_version LIMIT 1', client.dbConfig.db);
             var results = yield client.runQuery(versionQuery);
             var version = 0;
             if (results.rows.length > 0) {
@@ -128,14 +122,20 @@ module.exports = class Changeset {
     }
 
     runQuery(query, version) {
-        return new Promise(function(resolve, reject) {
+        return new Promise((resolve, reject) => {
             log.info('running query:', query);
-            client.db.execute(query, function(err, results) {
-                if (err) {
-                    return reject(new Error(format('Error applying changeset %d: %s', version, err)));
-                }
-                resolve(results);
-            });
+            console.log('running query:', query);
+            sequelize.query(query)
+                .then((results) => {
+                    console.log('these are the results from query', results);
+                    if (!results) {
+                        return reject(new Error(format('Error applying changeset %s', version)));
+                    }
+                    resolve(results);
+                }, (err) => {
+                    console.log('error with query');
+                    log.debug(err);
+                });
         });
     }
 
@@ -211,22 +211,23 @@ module.exports = class Changeset {
 
     runScript() {
         return co(function*() {
-            client.db = new cassandra.Client(client.dbConfig);
-            client.db.connect((err, res) => {
-                if (err) {
+            console.log('client.dbConfig: \n', client.dbConfig);
+            let conf = client.dbConfig;
+            sequelize = new Sequelize(conf.db, conf.username, conf.password, {
+                host: conf.host,
+                dialect: conf.dialect
+            });
+            yield sequelize.sync()
+                .then(() => {
+                    console.log('connected to postgres');
+                    log.info('postgres connected');
+                })
+                .catch((err) => {
+                    console.log('AWWW SHUCKS!');
                     log.debug(err);
-                    throw new Error('Could not connect to database');
-                } else {
-                    log.info('cassandra connected');
-                }
-            });
-            client.db.on('log', (level, className, message) => {
-                if (level === 'info' && client.config.verbose) {
-                    log.info(message);
-                } else if (level !== 'info' && client.config.debug) {
-                    log.debug(message);
-                }
-            });
+                    throw new Error('Could not connect to postgres');
+                });
+            //if we provide a target version...
             if (client.config.updateVersion) {
                 log.info('Updating current schema version');
                 yield client.createTable();
