@@ -1,7 +1,16 @@
 module.exports = {
-    contactPoints: ['vm.vertebrae.io'],
-    protocolOptions: {
-        port: 9042
+    cassandra: {
+        contactPoints: ['vm.vertebrae.io'],
+        protocolOptions: {
+            port: 9042
+        },
+        keyspace: 'test',
+        dialect: 'cassandra'
     },
-    keyspace: 'test'
+    postgres: {
+        host: 'vm.vertebrae.io',
+        username: 'postgres',
+        password: 'postgres',
+        dialect: 'postgres'
+    }
 };
