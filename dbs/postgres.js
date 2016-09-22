@@ -2,8 +2,8 @@
 
 const co = require('co');
 const fs = require('co-fs');
+var Pg = require('pg');
 const reduce = require('co-reduce');
-const Sequelize = require('sequelize');
 const path = require('path');
 const format = require('util').format;
 const winston = require('winston');
@@ -12,7 +12,7 @@ const log = new winston.Logger({
     transports: [consoleLogger]
 });
 
-var client, sequelize;
+var client, pg;
 
 module.exports = class Changeset {
 
@@ -73,30 +73,18 @@ module.exports = class Changeset {
 
     createTable() {
         return co(function*() {
-            //SELECT version(); vs SHOW server_version;
-            var versionQuery = 'SHOW server_version';
-            var results = yield client.runQuery(versionQuery);
-            var postgresVersion = results[0].server_version;
-            if (!postgresVersion) {
-                throw new Error('Could not determine the version of Postgres!');
-            }
-            log.debug('Postgres version: ' + postgresVersion);
             var tableQuery = format(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"
             );
-            results = yield client.runQuery(tableQuery);
-            var tableNames = results.map((row) => {
-                return row[0];
+            var results = yield client.runQuery(tableQuery);
+            var tableNames = results.rows.map((row) => {
+                return row.table_name;
             });
             if (tableNames.indexOf('schema_version') > -1) {
                 log.debug('Table "schema_version" already exists.');
                 return;
             } else {
-                var createQuery = format(
-                    'CREATE TABLE %s.schema_version'
-                    + '(zero INT, version INT, date DATE, PRIMARY KEY (zero, version))',
-                    client.dbConfig.db
-                );
+                var createQuery = 'CREATE TABLE schema_version(id SERIAL PRIMARY key, version INT)';
                 log.info('creating the "schema_version" table...');
                 return yield client.runQuery(createQuery);
             }
@@ -107,13 +95,12 @@ module.exports = class Changeset {
         return co(function*() {
             yield client.createTable();
             log.debug('Fetching version info...');
-            var versionQuery = format('SELECT version FROM %s.schema_version LIMIT 1', client.dbConfig.db);
+            var versionQuery = 'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1';
             var results = yield client.runQuery(versionQuery);
+            results = results.rows[0].version;
             var version = 0;
-            if (results.rows.length > 0) {
-                if (results.rows[0] && results.rows[0].version) {
-                    version = results.rows[0].version;
-                }
+            if (results && results > 0) {
+              version = results;
             }
             version = parseInt(version);
             log.debug('Current version is ' + version);
@@ -124,32 +111,23 @@ module.exports = class Changeset {
     runQuery(query, version) {
         return new Promise((resolve, reject) => {
             log.info('running query:', query);
-            console.log('running query:', query);
-            sequelize.query(query)
-                .then((results) => {
-                    console.log('these are the results from query', results);
-                    if (!results) {
-                        return reject(new Error(format('Error applying changeset %s', version)));
-                    }
-                    resolve(results);
-                }, (err) => {
-                    console.log('error with query');
+            pg.query(query, (err, results) => {
+                if(err) {
                     log.debug(err);
-                });
+                    return reject(new Error(format('Error applying changeset %s', version)));
+                }
+                resolve(results);
+            });
         });
     }
 
-
-    /**
-     * changesetItem: {file: <filepath>, ext: <extension>, version: ...}
-     */
     applyChangeset(changesetItem) {
         var file = changesetItem.file;
         var version = changesetItem.version;
         var ext = changesetItem.ext;
         var updateChangesetVersion = format(
-                'INSERT INTO %s.schema_version (zero, version, date) VALUES (0, %d, %d)',
-                client.dbConfig.keyspace, version, Date.now()
+                'INSERT INTO schema_version (version) VALUES (%d)',
+                version
             );
         return co(function*() {
             log.info('Applying changeset:', file);
@@ -211,22 +189,10 @@ module.exports = class Changeset {
 
     runScript() {
         return co(function*() {
-            console.log('client.dbConfig: \n', client.dbConfig);
             let conf = client.dbConfig;
-            sequelize = new Sequelize(conf.db, conf.username, conf.password, {
-                host: conf.host,
-                dialect: conf.dialect
-            });
-            yield sequelize.sync()
-                .then(() => {
-                    console.log('connected to postgres');
-                    log.info('postgres connected');
-                })
-                .catch((err) => {
-                    console.log('AWWW SHUCKS!');
-                    log.debug(err);
-                    throw new Error('Could not connect to postgres');
-                });
+            var conString = format("postgres://%s:%s@%s:5432/%s", conf.username, conf.password, conf.host, conf.db);
+            pg = new Pg.Client(conString);
+            pg.connect();
             //if we provide a target version...
             if (client.config.updateVersion) {
                 log.info('Updating current schema version');

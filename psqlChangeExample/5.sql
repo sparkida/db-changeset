@@ -1,2 +1,2 @@
 ALTER TABLE company
-  ADD revenue INT
+  ADD bank INT

@@ -1,11 +1,15 @@
-CREATE TABLE example_table (
-  id int PRIMARY KEY,
-  name text,
-  record_timestamp timestamp
+CREATE TABLE COMPANY(
+   ID  SERIAL PRIMARY KEY,
+   NAME           TEXT      NOT NULL,
+   AGE            INT       NOT NULL,
+   ADDRESS        CHAR(50),
+   SALARY         REAL
 );
 ---
-CREATE TABLE example_table_2 (
-  id int PRIMARY KEY,
-  description text,
-  record_timestamp timestamp
+CREATE TABLE COMPANY2(
+   ID  SERIAL PRIMARY KEY,
+   NAME           TEXT      NOT NULL,
+   AGE            INT       NOT NULL,
+   ADDRESS        CHAR(50),
+   SALARY         REAL
 );
