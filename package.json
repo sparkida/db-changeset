@@ -22,7 +22,6 @@
     "co-reduce": "^1.0.1",
     "commander": "^2.9.0",
     "pg": "^6.1.0",
-    "sequelize": "^3.24.3",
     "winston": "^2.2.0"
   },
   "license": "MIT",

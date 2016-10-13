@@ -74,7 +74,8 @@ module.exports = class Changeset {
     createTable() {
         return co(function*() {
             var tableQuery = format(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"
+                "SELECT table_name FROM information_schema.tables WHERE "
+                + "table_schema='public' AND table_type='BASE TABLE'"
             );
             var results = yield client.runQuery(tableQuery);
             var tableNames = results.rows.map((row) => {
@@ -97,12 +98,10 @@ module.exports = class Changeset {
             log.debug('Fetching version info...');
             var versionQuery = 'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1';
             var results = yield client.runQuery(versionQuery);
-            results = results.rows[0].version;
             var version = 0;
-            if (results && results > 0) {
-              version = results;
+            if (results.length > 0) {
+                version = parseInt(results.rows[0].version);
             }
-            version = parseInt(version);
             log.debug('Current version is ' + version);
             return version;
         });
