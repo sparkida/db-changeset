@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-const Client = require('../index');
 const commander = require('commander');
+const format = require('util').format;
 const moduleVersion = require('../package.json').version;
 const winston = require('winston');
 const log = new winston.Logger({
@@ -9,11 +9,13 @@ const log = new winston.Logger({
 });
 const path = require('path');
 const run = (config) => {
+    var conf = config.dbConfig[config.name];
+    const Client = require(format('../dbs/%s', conf.dialect));
+    config.dbConfig = conf;
     var client = new Client(config);
     client.runScript()
         .then((version) => {
             log.info('success');
-            // success
             process.exit();
         })
         .catch((err) => {
@@ -25,10 +27,12 @@ const run = (config) => {
 var ran = false;
 commander
     .version(moduleVersion)
+    // <flag> === required && [flag] === optional
     .usage('[options] <config>')
+    .option('-n, --name <name>', 'database instance found in config')
+    .option('-d, --directory <directory>', 'directory to look for changeset files')
     .option('-v, --verbose', 'show basic logging information')
     .option('--debug', 'show all logging information')
-    .option('-d, --directory [directory]', 'directory to look for changeset files')
     .option('-t, --target [version]', 'target a version to run changesets from')
     .option('-u, --update [updateVersion]', 'update schema_version table to target version')
     .action((dbConfig, options) => {
@@ -43,6 +47,7 @@ commander
             }
             run({
                 dbConfig: dbConfig,
+                name: commander.name,
                 changesetDirectory: commander.directory ? path.resolve(commander.directory) : null,
                 version: commander.target,
                 updateVersion: commander.update,
@@ -57,4 +62,3 @@ if (!ran) {
     commander.outputHelp();
     throw new Error('DB connection file required');
 }
-

@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "NodeJS module for Cassandra changesets",
   "contributors": [
-      "Rob Higgins <higginsrob@gmail.com> (https://github.com/higginsrob)",
-      "Nick Riley <nick@sparkida.com> (http://github.com/sparkida)"
+    "Rob Higgins <higginsrob@gmail.com> (https://github.com/higginsrob)",
+    "Nick Riley <nick@sparkida.com> (http://github.com/sparkida)",
+    "Austin Kim <austinyearlykim@gmail.com> (https://github.com/austinyearlykim)"
   ],
   "keywords": [
     "cassandra",
@@ -20,6 +21,7 @@
     "co-fs": "^1.2.0",
     "co-reduce": "^1.0.1",
     "commander": "^2.9.0",
+    "pg": "^6.1.0",
     "winston": "^2.2.0"
   },
   "license": "MIT",
