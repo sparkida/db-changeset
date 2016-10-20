@@ -1,13 +1,13 @@
 Cassandra Changesets
 ====================
-NodeJS module for running changesets against Cassandra
+NodeJS module for running changesets against Cassandra and Postgres
 
 
 How To Run
 ==========
 
 ```bash
-node ./cassandra-changeset config.js
+node ./bin/changeset-cli.js config.js
 ```
 
 Configuration
