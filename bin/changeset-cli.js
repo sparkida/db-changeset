@@ -51,7 +51,7 @@ commander
                 assert(!!dbConfig[commander.name], 'the --name should match a property in your configuration file');
                 dbConfig = dbConfig[commander.name];
                 assert(commander.directory.length > 0, 'the --directory is required');
-                dir = path.join(commander.directory, dbConfig.dialect);
+                dir = path.join(commander.directory, commander.name);
                 assert(fs.existsSync(dir), '--directory does not exist ' + dir);
             } catch (e) {
                 process.stdout.write(e.message + '\n');
