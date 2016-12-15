@@ -97,10 +97,10 @@ module.exports = class Changeset {
             yield client.createTable();
             log.debug('Fetching version info...');
             var versionQuery = 'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1';
-            var results = yield client.runQuery(versionQuery);
+            var result = yield client.runQuery(versionQuery);
             var version = 0;
-            if (results.length > 0) {
-                version = parseInt(results.rows[0].version);
+            if (result.rows.length) {
+                version = parseInt(result.rows[0].version);
             }
             log.debug('Current version is ' + version);
             return version;
