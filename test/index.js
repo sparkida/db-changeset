@@ -1,5 +1,5 @@
 /* jshint ignore:start */
-const changeset = require('../bin/changeset-cli');
+const changeset = require('../bin/changeset');
 const dbConfig = require('../config.sample.js');
 const pg = require('pg');
 const assert = require('assert');

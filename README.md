@@ -4,71 +4,35 @@ Cassandra Changesets
 NodeJS module for running changesets against databases
 
 
-Current Support DB Drivers
-==========================
+- Current Support DB Drivers
 
-- Postgres
-- Cassandra
+    - Postgres
+    - Cassandra
+
+- Changesets
+
+    - Each changeset file should follow the naming convention `<FileId>.<SchemaVersion>.<Extension>`
+    - FileId is always unique and generally an increment from last id
+
+- Examples
+    
+    - **[Changesets](https://github.com/vertebrae-org/db-changeset/tree/master/examples)**
+    - **[Configuration](https://github.com/vertebrae-org/db-changeset/blob/master/config.sample.js)**
 
 How To Run
 ==========
 
-```bash
-node ./bin/changeset-cli.js config.js
-```
+- From Repo
 
-Configuration
-=============
+    ```bash
+    node . <options> config.js
+    #or
+    ./bin/changeset <options> config.js
+    ```
 
-```js
-module.exports = {
-    contactPoints: ['vm.vertebrae.io'],
-    protocolOptions: {
-        port: 9042
-    },
-    keyspace: 'test'
-};
-```
+- As dependency (from npm)
 
-Changesets
-==========
+    ```bash
+    changeset <options> config.js
+    ```
 
-The changeset files should all reside at the root level of the directory
-specified by `-d, --directory` cli option or the `config.changesetDirectory` property. Each configuration file should
-follow the naming convention `<VERSION>.cql` or `<VERSION>.js`
-
-Javascript Changeset Files
-==========================
-.js changeset files are javascript modules that return a function with one argument, a reference to the changeset instance. When invoked this function returns a promise, generator, or array of promises/generators.  
-
-Example:
-```javascript
-module.exports = function(changeset){
-    return new Promise(function(resolve, reject) {
-        var query = 'select count(1) from test.users';
-        changeset.client.execute(query, function(err, results) {
-            if (err) {
-                return reject(new Error('Error applying changeset '));
-            }
-            resolve(results);
-        });
-    });
-};
-```
-CQL Changeset Files
-===================
-
-***Note:*** Use three hyphens (**---**) for multiple CQL statements
-
-Example:
-```
-CREATE TABLE example_table (
-  id int PRIMARY KEY,
-  date timestamp
-);
----
-CREATE TABLE example_table_2 (
-  name text,
-  email text
-);
-```
