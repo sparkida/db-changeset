@@ -1,7 +1,14 @@
 Cassandra Changesets
 ====================
-NodeJS module for running changesets against Cassandra and Postgres
 
+NodeJS module for running changesets against databases
+
+
+Current Support DB Drivers
+==========================
+
+- Postgres
+- Cassandra
 
 How To Run
 ==========

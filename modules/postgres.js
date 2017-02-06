@@ -2,7 +2,7 @@
 
 const co = require('co');
 const fs = require('co-fs');
-var Pg = require('pg');
+const Pg = require('pg');
 const reduce = require('co-reduce');
 const path = require('path');
 const format = require('util').format;
@@ -13,6 +13,22 @@ const log = new winston.Logger({
 });
 
 var client, pg;
+class Transaction {
+
+    constructor() {
+        this.entries = ['BEGIN;'];
+    }
+
+    add(entry) {
+        this.entries.push(entry);
+    }
+
+    commit() {
+        let transaction = this.entries;
+        transaction.push('END;');
+        return transaction.join('\n');
+    }
+}
 
 module.exports = class Changeset {
 
@@ -27,10 +43,24 @@ module.exports = class Changeset {
             log.level = 'debug';
         } else if (config.verbose) {
             log.level = 'info';
-        } else {
+        } else if (log.transports.console) {
             //disable logging
             log.remove(consoleLogger);
         }
+    }
+
+    beginTransaction() {
+        if (client.transaction) {
+            throw new Error('Currently only supports single transaction depth');
+        }
+        //make immutable
+        let transaction = new Transaction();
+        return {
+            add: (entry) => {
+                transaction.add(entry);
+            },
+            commit: (run) => client.runQuery(transaction.commit())
+        };
     }
 
     getChangesets() {
@@ -41,15 +71,13 @@ module.exports = class Changeset {
                 throw new Error('Could not find changeset directory:', dir);
             }
             var files = yield fs.readdir(dir);
-            var targetVersion = client.config.version || 0;
+            let [targetFileId] = (client.config.targetFile || '0.0').split('.');
             files = yield reduce(files, function*(list, file) {
-                var parts = file.split('.');
-                var version = parseInt(parts[0]);
-                if (version < targetVersion) {
+                let [fileId, schema, ext] = file.split('.');
+                if (fileId < targetFileId) {
                     return list;
                 }
-                var ext = parts[1];
-                if ((ext !== 'js' && ext !== 'sql') || isNaN(version)) {
+                if ((ext !== 'js' && ext !== 'sql') || isNaN(fileId)) {
                     return list;
                 }
                 var filepath = path.join(dir, file);
@@ -58,9 +86,11 @@ module.exports = class Changeset {
                     return list;
                 }
                 list.push({
-                    file: filepath,
-                    ext: ext,
-                    version: parseInt(version)
+                    file,
+                    filepath,
+                    ext,
+                    fileId: parseInt(fileId),
+                    schema: parseInt(schema)
                 });
                 return list;
             }, []);
@@ -74,36 +104,33 @@ module.exports = class Changeset {
     createTable() {
         return co(function*() {
             var tableQuery = format(
-                "SELECT table_name FROM information_schema.tables WHERE "
-                + "table_schema='public' AND table_type='BASE TABLE'"
+                "SELECT 1 as found FROM information_schema.tables WHERE table_name='schema_version'"
             );
-            var results = yield client.runQuery(tableQuery);
-            var tableNames = results.rows.map((row) => {
-                return row.table_name;
-            });
-            if (tableNames.indexOf('schema_version') > -1) {
+            var result = yield client.runQuery(tableQuery);
+            if (result.rows.length) {
                 log.debug('Table "schema_version" already exists.');
-                return;
             } else {
-                var createQuery = 'CREATE TABLE schema_version(id SERIAL PRIMARY key, version INT)';
+                var createQuery = 'CREATE TABLE schema_version(file_id SERIAL PRIMARY key, schema INT)';
                 log.info('creating the "schema_version" table...');
                 return yield client.runQuery(createQuery);
             }
         });
     }
 
-    getVersion() {
+    getVersions() {
         return co(function*() {
             yield client.createTable();
             log.debug('Fetching version info...');
-            var versionQuery = 'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1';
+            var versionQuery = 'SELECT file_id,schema FROM schema_version ORDER BY file_id DESC LIMIT 1';
             var result = yield client.runQuery(versionQuery);
-            var version = 0;
+            var fileId = 0;
+            var schema = 0;
             if (result.rows.length) {
-                version = parseInt(result.rows[0].version);
+                fileId = parseInt(result.rows[0].file_id);
+                schema = parseInt(result.rows[0].schema);
             }
-            log.debug('Current version is ' + version);
-            return version;
+            log.debug(`Current Schema: fileId=${fileId}, version=${schema}`);
+            return {fileId, schema};
         });
     }
 
@@ -122,41 +149,38 @@ module.exports = class Changeset {
 
     applyChangeset(changesetItem) {
         var file = changesetItem.file;
-        var version = changesetItem.version;
+        var filepath = changesetItem.filepath;
+        var fileId = changesetItem.fileId;
+        var schema = changesetItem.schema;
         var ext = changesetItem.ext;
         var updateChangesetVersion = format(
-                'INSERT INTO schema_version (version) VALUES (%d)',
-                version
+                'INSERT INTO schema_version (file_id,schema) VALUES (%d, %d);',
+                fileId,
+                schema
             );
         return co(function*() {
             log.info('Applying changeset:', file);
             //if updateVersion is present, we want to blindly set the changeset version
             //assuming this is the current state of the model
-            if (client.config.updateVersion) {
-                log.info('Setting schema_version to', version, changesetItem);
-                yield client.runQuery(updateChangesetVersion, version);
+            let queryString = updateChangesetVersion;
+            if (client.config.updateFile) {
+                log.info(`Setting Schema Version: fileId=${fileId}, schema=${schema}`);
             } else if (ext === 'js') {
-                yield require(file)(client);
-                yield client.runQuery(updateChangesetVersion, version);
+                yield require(filepath)(client);
             } else {
-                var queryStrings = yield fs.readFile(file, 'utf-8');
-                queryStrings = queryStrings
-                    .split('---')
-                    .map((item) => {
-                        return item.trim();
-                    });
-                queryStrings.push(updateChangesetVersion);
-                for (var i = 0; i < queryStrings.length; i++) {
-                    yield client.runQuery(queryStrings[i], version);
-                }
+                queryString = yield fs.readFile(filepath, 'utf-8');
+                queryString = 'BEGIN;\n' + queryString + '\n' 
+                    + updateChangesetVersion + '\nEND;\n';
             }
+            yield client.runQuery(queryString, fileId, schema);
         });
     }
 
     runChanges() {
         return client.createTable().then(() => {
+            let currentVersion = client.versions.fileId;
             var changesets = client.changesetFiles.filter((item) => {
-                return item.version > client.schemaVersion;
+                return item.fileId > currentVersion;
             }).sort((a, b) => {
                 if (a.version > b.version) {
                     return 1;
@@ -167,39 +191,57 @@ module.exports = class Changeset {
                 return 0;
             });
             if (changesets.length < 1) {
-                log.info('No new changesets. Schema version is ' + client.schemaVersion);
-                return client.schemaVersion;
+                log.info('No new changesets. Schema version is ' + client.versions.fileId);
+                return client.versions.fileId;
             }
-            var versions = changesets.map((item) => {
-                    return item.version;
-                });
-            versions.unshift(client.schemaVersion);
-            log.info('Changing database', versions.join(' -> '));
             return co(function*() {
-                for (var i = 0; i < changesets.length; i++) {
-                    yield client.applyChangeset(changesets[i]);
+                let changeset;
+                for (changeset of changesets) {
+                    yield client.applyChangeset(changeset);
                 }
-                var version = versions.pop();
-                log.info('All changesets complete. Schema is now at version', version);
-                return version;
+                log.info('All changesets complete. Schema is now at version', changeset);
             });
         });
+    }
+
+    checkUpdate() {
+        let updateFile = client.config.updateFile;
+        let files = client.changesetFiles;
+        let found = false;
+        for (let item of files) {
+            if (item.file === updateFile) {
+                found = item;
+                break;
+            }
+        }
+        if (!found) {
+            throw new Error('could not find update file: ' + updateFile);
+        }
+        let targetVersion = found.fileId;
+        let currentVersion = client.versions.fileId;
+        if (targetVersion === currentVersion) {
+            throw new Error('Update target is same as current schema version');
+        } else if (targetVersion < currentVersion) {
+            throw new Error('Update target is behind current schema version');
+        }
+        return found;
     }
 
     runScript() {
         return co(function*() {
             let conf = client.dbConfig;
             var conString = format("postgres://%s:%s@%s:5432/%s", conf.username, conf.password, conf.host, conf.db);
-            pg = new Pg.Client(conString);
+            client.connection = pg = new Pg.Client(conString);
             pg.connect();
-            //if we provide a target version...
-            if (client.config.updateVersion) {
-                log.info('Updating current schema version');
-                yield client.createTable();
-                return yield client.applyChangeset({version: client.config.updateVersion});
-            }
             client.changesetFiles = yield client.getChangesets();
-            client.schemaVersion = yield client.getVersion();
+            client.versions = yield client.getVersions();
+            //if we provide a target version...
+            if (client.config.updateFile) {
+                let changeset = client.checkUpdate();
+                log.info(`Updating current schema version: ${client.versions.fileId} -> ${changeset.fileId}`);
+                yield client.createTable();
+                return yield client.applyChangeset(changeset);
+            }
             return yield client.runChanges();
         });
     }

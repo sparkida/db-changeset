@@ -1,1 +1,1 @@
-require('./bin/changeset-cli');
+bin/changeset.js
