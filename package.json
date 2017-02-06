@@ -1,19 +1,23 @@
 {
-  "name": "cassandra-changeset",
-  "version": "1.0.0",
-  "description": "NodeJS module for Cassandra changesets",
+  "name": "changeset",
+  "version": "1.2.0",
+  "description": "NodeJS module for running changesets against databases",
+  "scripts": {
+    "test": "mocha -R spec --bail ./test"
+  },
   "contributors": [
     "Rob Higgins <higginsrob@gmail.com> (https://github.com/higginsrob)",
     "Nick Riley <nick@sparkida.com> (http://github.com/sparkida)",
     "Austin Kim <austinyearlykim@gmail.com> (https://github.com/austinyearlykim)"
   ],
   "keywords": [
-    "cassandra",
-    "changeset"
+    "changeset",
+    "database",
+    "migration"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/vertebrae-org/cassandra-changeset.git"
+    "url": "https://github.com/vertebrae-org/db-changeset.git"
   },
   "dependencies": {
     "cassandra-driver": "^3.0.2",
@@ -25,5 +29,10 @@
     "winston": "^2.2.0"
   },
   "license": "MIT",
-  "bin": "bin/changeset-cli.js"
+  "bin": {
+      "changeset": "./bin/changeset.js"
+  },
+  "devDependencies": {
+    "mocha": "^3.2.0"
+  }
 }

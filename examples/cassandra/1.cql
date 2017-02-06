@@ -3,7 +3,6 @@ CREATE TABLE example_table (
   name text,
   record_timestamp timestamp
 );
----
 CREATE TABLE example_table_2 (
   id int PRIMARY KEY,
   description text,
