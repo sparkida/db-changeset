@@ -1,4 +1,4 @@
-Cassandra Changesets
+Cassandra Changesets [![Build Status][travis-badge]][travis-link] 
 ====================
 
 NodeJS module for running changesets against databases
@@ -36,3 +36,5 @@ How To Run
     changeset <options> config.js
     ```
 
+[travis-badge]: https://travis-ci.org/vertebrae-org/db-changeset.svg?branch=master
+[travis-link]: https://travis-ci.org/vertebrae-org/db-changeset
