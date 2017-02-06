@@ -1,0 +1,13 @@
+sudo: required
+dist: trusty
+language: node_js
+before_install:
+  - sed -i "s/host: 'vm.vertebrae.io'/host: 'localhost'/" config.sample.js
+addons:
+  postgresql: "9.5"
+node_js:
+  - '7.4.0'
+git:
+  depth: 3
+notifications:
+  slack: vertebrae-io:lernnSm4ESLg3QdUdfSU3unB
