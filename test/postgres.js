@@ -2,49 +2,49 @@ const changeset = require('../bin/changeset');
 const dbConfig = require('../config.sample.js');
 const assert = require('assert');
 
-let client;
-let admin;
-let config = {
-    debug: false,
-    verbose: false,
-    dbConfig: dbConfig.postgres,
-    name: 'postgres',
-    changesetDirectory: 'examples/postgres'
-};
-let connectionGenerator = function*(done, handler, skipConnect) {
-    let db = config.dbConfig.db;
-    if (!skipConnect) {
-        yield admin.connect().then(handler).catch(handler);
-    }
-    yield admin.db.query(`drop database if exists ${db}`, handler);
-    yield admin.db.query(`create database ${db}`, done);
-};
-
-before(() => {
-    let c = JSON.parse(JSON.stringify(config));
-    c.dbConfig.db = 'postgres';
-    admin = changeset.getClient(c);
-});
-
-beforeEach((done) => {
-    let gen = connectionGenerator(done, (err) => {
-        if (err) {
-            return done(err);
-        }
-        gen.next();
-    }, !!admin.db);
-    gen.next();
-});
-
-afterEach((done) => {
-    client.db.end(done);
-});
-
-after((done) => {
-    admin.db.end(done);
-});
-
 describe('Postgres', () => {
+    let client;
+    let admin;
+    let config = {
+        debug: false,
+        verbose: false,
+        dbConfig: dbConfig.postgres,
+        name: 'postgres',
+        changesetDirectory: 'examples/postgres'
+    };
+    let connectionGenerator = function*(done, handler, skipConnect) {
+        let db = config.dbConfig.db;
+        if (!skipConnect) {
+            yield admin.connect().then(handler).catch(handler);
+        }
+        yield admin.db.query(`drop database if exists ${db}`, handler);
+        yield admin.db.query(`create database ${db}`, done);
+    };
+
+    before(() => {
+        let c = JSON.parse(JSON.stringify(config));
+        c.dbConfig.db = 'postgres';
+        admin = changeset.getClient(c);
+    });
+
+    beforeEach((done) => {
+        let gen = connectionGenerator(done, (err) => {
+            if (err) {
+                return done(err);
+            }
+            gen.next();
+        }, !!admin.db);
+        gen.next();
+    });
+
+    afterEach((done) => {
+        client.db.end(done);
+    });
+
+    after((done) => {
+        admin.db.end(done);
+    });
+
     it ('should update current schema version to target sql file', (done) => {
         let c = Object.assign({updateFile: '1.1.sql'}, config);
         client = changeset.getClient(c);

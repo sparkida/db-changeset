@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "description": "NodeJS module for running changesets against databases",
   "scripts": {
-    "test": "mocha -R spec --bail ./test/index.js"
+    "test": "mocha -R spec --bail ./test"
   },
   "contributors": [
     "Rob Higgins <higginsrob@gmail.com> (https://github.com/higginsrob)",
