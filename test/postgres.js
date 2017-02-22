@@ -1,58 +1,55 @@
-/* jshint ignore:start */
 const changeset = require('../bin/changeset');
 const dbConfig = require('../config.sample.js');
-const pg = require('pg');
 const assert = require('assert');
 
-//-n postgres -u 1.1.js --d examples --debug config.sample.js
-
-
-let client;
-let admin;
-let pool;
-let config = {
-    debug: false,
-    verbose: false,
-    dbConfig: dbConfig.postgres,
-    name: 'postgres',
-    changesetDirectory: 'examples/postgres'
-};
-let connectionGenerator = function*(done, handler, skipConnect) {
-    let db = dbConfig.postgres.db;
-    if (!skipConnect) {
-        yield pool.connect(handler);
-    }
-    yield admin.query(`drop database if exists ${db}`, handler);
-    yield admin.query(`create database ${db}`, done);
-};
-
-beforeEach((done) => {
-    let d = dbConfig.postgres;
-    let connectionConfig = {
-        user: d.username,
-        database: 'postgres',
-        host: d.host
+describe('Postgres', () => {
+    let client;
+    let admin;
+    let config = {
+        debug: false,
+        verbose: false,
+        dbConfig: dbConfig.postgres,
+        name: 'postgres',
+        changesetDirectory: 'examples/postgres'
     };
-    pool = new pg.Pool(connectionConfig);
-    let gen = connectionGenerator(done, (err, res) => {
-        if (!admin) {
-            admin = res;
+    let connectionGenerator = function*(done, handler, skipConnect) {
+        let db = config.dbConfig.db;
+        if (!skipConnect) {
+            yield admin.connect().then(handler).catch(handler);
         }
+        yield admin.db.query(`drop database if exists ${db}`, handler);
+        yield admin.db.query(`create database ${db}`, done);
+    };
+
+    before(() => {
+        let c = JSON.parse(JSON.stringify(config));
+        c.dbConfig.db = 'postgres';
+        admin = changeset.getClient(c);
+    });
+
+    beforeEach((done) => {
+        let gen = connectionGenerator(done, (err) => {
+            if (err) {
+                return done(err);
+            }
+            gen.next();
+        }, !!admin.db);
         gen.next();
     });
-    gen.next();
-});
 
-afterEach((done) => {
-    client.connection.end(done);
-});
+    afterEach((done) => {
+        client.db.end(done);
+    });
 
-describe('Postgres', () => {
+    after((done) => {
+        admin.db.end(done);
+    });
+
     it ('should update current schema version to target sql file', (done) => {
         let c = Object.assign({updateFile: '1.1.sql'}, config);
         client = changeset.getClient(c);
         client.runScript().then(() => {
-            client.connection.query('select file_id,schema from schema_version', (err, result) => {
+            client.db.query('select file_id,schema from schema_version', (err, result) => {
                 let rows = result.rows;
                 assert(rows, 'no rows returned');
                 assert.equal(rows.length, 1);
@@ -66,7 +63,7 @@ describe('Postgres', () => {
         let c = Object.assign({updateFile: '2.2.js'}, config);
         client = changeset.getClient(c);
         client.runScript().then(() => {
-            client.connection.query('select file_id,schema from schema_version', (err, result) => {
+            client.db.query('select file_id,schema from schema_version', (err, result) => {
                 let rows = result.rows;
                 assert(rows, 'no rows returned');
                 assert.equal(rows.length, 1);
@@ -77,10 +74,10 @@ describe('Postgres', () => {
         }).catch(done);
     });
     it ('should target a changeset and update schema from that point', (done) => {
-        let c = Object.assign({targetFile: '2.2.sql'}, config);
+        let c = Object.assign({targetFile: '2.2.js'}, config);
         client = changeset.getClient(c);
         client.runScript().then(() => {
-            client.connection.query('select file_id,schema from schema_version', (err, result) => {
+            client.db.query('select file_id,schema from schema_version', (err, result) => {
                 let rows = result.rows;
                 assert(rows, 'no rows returned');
                 assert.equal(rows.length, 2);
@@ -93,7 +90,7 @@ describe('Postgres', () => {
     it ('should run all changesets', (done) => {
         client = changeset.getClient(config);
         client.runScript().then(() => {
-            client.connection.query('select file_id,schema from schema_version', (err, result) => {
+            client.db.query('select file_id,schema from schema_version', (err, result) => {
                 let rows = result.rows;
                 assert(rows, 'no rows returned');
                 assert.equal(rows.length, 3);
