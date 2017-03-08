@@ -2,6 +2,7 @@
 
 const co = require('co');
 const fs = require('co-fs');
+const sysFs = require('fs');
 const reduce = require('co-reduce');
 const path = require('path');
 const format = require('util').format;
@@ -90,7 +91,7 @@ module.exports = class Changeset {
         return client.createTable().then(() => {
             let currentVersion = client.versions.fileId;
             var changesets = client.changesetFiles.filter((item) => {
-                return item.fileId > currentVersion;
+                return item.fileId > currentVersion || !!item.parts;
             }).sort((a, b) => {
                 if (a.version > b.version) {
                     return 1;
@@ -148,11 +149,23 @@ module.exports = class Changeset {
         let targetVersion = found.fileId;
         let currentVersion = client.versions.fileId;
         if (targetVersion === currentVersion) {
+            if (client.versions.part) {
+                let parts = client.getParts(found.filepath);
+                if (parts.length > client.versions.part) {
+                    found.parts = parts;
+                    return found;
+                }
+            }
             throw new Error('Update target is same as current schema version');
         } else if (targetVersion < currentVersion) {
             throw new Error('Update target is behind current schema version');
         }
         return found;
+    }
+    
+    getParts(filepath) {
+        let query = sysFs.readFileSync(filepath, 'utf-8');
+        return query.replace(/\n/gm,'').split(';').filter(Boolean);
     }
 
     /** changesetItem: {file: <filepath>, ext: <extension>, version: ...} */
@@ -175,11 +188,20 @@ module.exports = class Changeset {
                 let query = yield fs.readFile(filepath, 'utf-8');
                 queryString = 'BEGIN;\n' + query + queryString + '\nEND;\n';
             } else if (ext === 'cql') {
-                let query = yield fs.readFile(filepath, 'utf-8');
-                query = query.replace(/\n/gm,'').split(';').filter(Boolean);
-                for (let i = 0; i < query.length; i++) {
-                    yield client.runQuery(query[i], fileId, schema);
-                    yield client.runQuery(client.getChangesetSql(fileId, schema, i + 1));
+                let query = changesetItem.parts;
+                if (!query) {
+                    query = client.getParts(filepath);
+                }
+                let part = 0;
+                //trying to recover from bad changeset
+                if (client.versions.part && client.versions.fileId === fileId) {
+                    part = client.versions.part;
+                }
+                while (part < query.length) {
+                    yield client.runQuery(query[part], fileId, schema);
+                    part += 1;
+                    client.versions.part = part;
+                    yield client.runQuery(client.getChangesetSql(fileId, schema, part));
                 }
                 return;
             }
