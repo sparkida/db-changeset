@@ -127,10 +127,8 @@ module.exports = class Changeset {
                 return null;
             }
             result = result.rows[0];
-            fileId = parseInt(result.fileId);
-            schema = parseInt(result.schemaVersion);
             log.debug(`Current Schema: fileId=${fileId}, version=${schema}`);
-            return {fileId, schema};
+            return result;
         });
     }
 
@@ -174,9 +172,16 @@ module.exports = class Changeset {
             } else if (ext === 'js') {
                 yield require(filepath)(client);
             } else if (ext === 'sql') {
-                queryString = yield fs.readFile(filepath, 'utf-8');
-                queryString = 'BEGIN;\n' + queryString + '\n' 
-                    + client.getChangesetSql(fileId, schema) + '\nEND;\n';
+                let query = yield fs.readFile(filepath, 'utf-8');
+                queryString = 'BEGIN;\n' + query + queryString + '\nEND;\n';
+            } else if (ext === 'cql') {
+                let query = yield fs.readFile(filepath, 'utf-8');
+                query = query.replace(/\n/gm,'').split(';').filter(Boolean);
+                for (let i = 0; i < query.length; i++) {
+                    yield client.runQuery(query[i], fileId, schema);
+                    yield client.runQuery(client.getChangesetSql(fileId, schema, i + 1));
+                }
+                return;
             }
             yield client.runQuery(queryString, fileId, schema);
         });
@@ -205,6 +210,7 @@ module.exports = class Changeset {
             client.versions = yield client.getVersions();
             if (!client.versions) {
                 client.versions = {
+                    part: 0,
                     fileId: 0,
                     schema: 0
                 };

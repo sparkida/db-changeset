@@ -78,12 +78,13 @@ describe('Cassandra', () => {
         let c = Object.assign({targetFile: '2.2.js'}, config);
         client = changeset.getClient(c);
         client.runScript().then(() => {
-            client.db.execute('select file_id,schema_version from schema_version', (err, result) => {
+            client.db.execute('select file_id,schema_version,part from schema_version', (err, result) => {
                 let rows = result.rows;
                 assert(rows, 'no rows returned');
-                assert.equal(rows.length, 2);
-                assert.equal(rows[0].file_id, 3);
+                assert.equal(rows.length, 4);
+                assert.equal(rows[0].file_id, 4);
                 assert.equal(rows[0].schema_version, 2);
+                assert.equal(rows[0].part, 2);
                 done();
             });
         }).catch(done);
@@ -91,12 +92,13 @@ describe('Cassandra', () => {
     it ('should run all changesets', (done) => {
         client = changeset.getClient(config);
         client.runScript().then(() => {
-            client.db.execute('select file_id,schema_version from schema_version', (err, result) => {
+            client.db.execute('select file_id,schema_version,part from schema_version', (err, result) => {
                 let rows = result.rows;
                 assert(rows, 'no rows returned');
-                assert.equal(rows.length, 3);
-                assert.equal(rows[0].file_id, 3);
+                assert.equal(rows.length, 6);
+                assert.equal(rows[0].file_id, 4);
                 assert.equal(rows[0].schema_version, 2);
+                assert.equal(rows[0].part, 2);
                 done();
             });
         }).catch(done);

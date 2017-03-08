@@ -16,13 +16,16 @@ module.exports = class Driver extends Changeset {
     }
 
     getVersionSql() {
-        return 'SELECT file_id as "fileId", schema_version as "schemaVersion" FROM schema_version LIMIT 1';
+        return 'SELECT file_id as "fileId", schema_version as "schemaVersion", part FROM schema_version LIMIT 1;';
     }
 
-    getChangesetSql(fileId, schema) {
+    getChangesetSql(fileId, schema, part = 0) {
         return format(
-            'INSERT INTO %s.schema_version (zero, file_id, schema_version) VALUES (0, %d, %d)',
-            client.dbConfig.keyspace, fileId, schema
+            'INSERT INTO %s.schema_version (zero, file_id, schema_version, part) VALUES (0, %d, %d, %d);',
+            client.dbConfig.keyspace,
+            fileId, 
+            schema,
+            part
         );
     }
 
@@ -52,8 +55,8 @@ module.exports = class Driver extends Changeset {
             } else {
                 var createQuery = format(
                         'CREATE TABLE %s.schema_version ('
-                        + 'zero INT, file_id INT, schema_version INT, PRIMARY KEY (zero, file_id, schema_version)'
-                        + ') WITH CLUSTERING ORDER BY (file_id DESC, schema_version DESC)',
+                        + 'zero INT, file_id INT, schema_version INT, part INT, PRIMARY KEY (zero, file_id, schema_version, part)'
+                        + ') WITH CLUSTERING ORDER BY (file_id DESC, schema_version DESC, part DESC)',
                         client.dbConfig.keyspace);
                 log.info('creating the "schema_version" table...');
                 return yield client.runQuery(createQuery);

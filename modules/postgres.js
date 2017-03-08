@@ -32,15 +32,11 @@ module.exports = class Driver extends Changeset {
     }
 
     getVersionSql() {
-        return 'SELECT file_id as "fileId", schema as "schemaVersion" FROM schema_version ORDER BY file_id DESC LIMIT 1';
+        return 'SELECT file_id as "fileId", schema as "schemaVersion" FROM schema_version ORDER BY file_id DESC LIMIT 1;';
     }
 
     getChangesetSql(fileId, schema) {
-        return format(
-            'INSERT INTO schema_version (file_id,schema) VALUES (%d, %d);',
-            fileId,
-            schema
-        );
+        return `INSERT INTO schema_version (file_id,schema) VALUES (${fileId}, ${schema});`;
     }
 
     beginTransaction() {
