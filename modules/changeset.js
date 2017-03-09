@@ -2,6 +2,7 @@
 
 const co = require('co');
 const fs = require('co-fs');
+const sysFs = require('fs');
 const reduce = require('co-reduce');
 const path = require('path');
 const format = require('util').format;
@@ -86,11 +87,14 @@ module.exports = class Changeset {
         });
     }
 
-    runChanges() {
+    runChanges(changeset) {
         return client.createTable().then(() => {
             let currentVersion = client.versions.fileId;
+            let targetVersion = changeset ? changeset.fileId : null;
             var changesets = client.changesetFiles.filter((item) => {
-                return item.fileId > currentVersion;
+                return item.fileId > currentVersion 
+                    || (!!item.parts && item.parts.length && item.fileId === currentVersion)
+                    || (targetVersion && item.fileId >= targetVersion);
             }).sort((a, b) => {
                 if (a.version > b.version) {
                     return 1;
@@ -127,10 +131,8 @@ module.exports = class Changeset {
                 return null;
             }
             result = result.rows[0];
-            fileId = parseInt(result.fileId);
-            schema = parseInt(result.schemaVersion);
             log.debug(`Current Schema: fileId=${fileId}, version=${schema}`);
-            return {fileId, schema};
+            return result;
         });
     }
 
@@ -150,11 +152,24 @@ module.exports = class Changeset {
         let targetVersion = found.fileId;
         let currentVersion = client.versions.fileId;
         if (targetVersion === currentVersion) {
+            if (client.versions.part) {
+                let parts = client.getParts(found.filepath);
+                if (parts.length > client.versions.part) {
+                    found.parts = parts;
+                }
+            }
+            /* 
             throw new Error('Update target is same as current schema version');
-        } else if (targetVersion < currentVersion) {
+        else if (targetVersion < currentVersion) {
             throw new Error('Update target is behind current schema version');
+        } // targetting a version is the direct intent to run a changeset */
         }
         return found;
+    }
+    
+    getParts(filepath) {
+        let query = sysFs.readFileSync(filepath, 'utf-8');
+        return query.replace(/\n/gm,'').split(';').filter(Boolean);
     }
 
     /** changesetItem: {file: <filepath>, ext: <extension>, version: ...} */
@@ -174,9 +189,28 @@ module.exports = class Changeset {
             } else if (ext === 'js') {
                 yield require(filepath)(client);
             } else if (ext === 'sql') {
-                queryString = yield fs.readFile(filepath, 'utf-8');
-                queryString = 'BEGIN;\n' + queryString + '\n' 
-                    + client.getChangesetSql(fileId, schema) + '\nEND;\n';
+                let query = yield fs.readFile(filepath, 'utf-8');
+                queryString = 'BEGIN;\n' + query + queryString + '\nEND;\n';
+            } else if (ext === 'cql') {
+                let query = changesetItem.parts;
+                if (!query) {
+                    query = client.getParts(filepath);
+                }
+                let part = 0;
+                let size = query.length;
+                //trying to recover from bad changeset, if the part is less
+                //than the total parts we know the script was interrupted or updated
+                if (client.versions.fileId === fileId && client.versions.part 
+                        && client.versions.part < size ) {
+                    part = client.versions.part;
+                }
+                while (part < size) {
+                    yield client.runQuery(query[part], fileId, schema);
+                    part += 1;
+                    client.versions.part = part;
+                    yield client.runQuery(client.getChangesetSql(fileId, schema, part));
+                }
+                return;
             }
             yield client.runQuery(queryString, fileId, schema);
         });
@@ -205,6 +239,7 @@ module.exports = class Changeset {
             client.versions = yield client.getVersions();
             if (!client.versions) {
                 client.versions = {
+                    part: 0,
                     fileId: 0,
                     schema: 0
                 };
@@ -214,9 +249,11 @@ module.exports = class Changeset {
                 let changeset = client.checkFile();
                 log.info(`Updating current schema version: ${client.versions.fileId} -> ${changeset.fileId}`);
                 yield client.createTable();
-                return yield client.applyChangeset(changeset);
+                let q = client.getChangesetSql(changeset.fileId, changeset.schema);
+                return yield client.runQuery(q);
             } else if (client.config.targetFile) {
-                client.checkFile();
+                let changeset = client.checkFile();
+                return yield client.runChanges(changeset);
             }
             return yield client.runChanges();
         });

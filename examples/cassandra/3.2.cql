@@ -1,4 +1,4 @@
-CREATE TABLE example_table3 (
+CREATE TABLE example_table (
   id int PRIMARY KEY,
   name text,
   record_timestamp timestamp

@@ -1,9 +1,9 @@
-CREATE TABLE example_table (
+CREATE TABLE baz (
   id int PRIMARY KEY,
   name text,
   record_timestamp timestamp
 );
-CREATE TABLE example_table_2 (
+CREATE TABLE bar (
   id int PRIMARY KEY,
   description text,
   record_timestamp timestamp

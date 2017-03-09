@@ -4,7 +4,7 @@ module.exports = {
         protocolOptions: {
             port: 9042
         },
-        keyspace: 'test',
+        keyspace: 'tester',
         dialect: 'cassandra'
     },
     postgres: {
