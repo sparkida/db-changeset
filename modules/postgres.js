@@ -36,7 +36,7 @@ module.exports = class Driver extends Changeset {
     }
 
     getChangesetSql(fileId, schema) {
-        return `INSERT INTO schema_version (file_id,schema) VALUES (${fileId}, ${schema});`;
+        return `INSERT INTO schema_version (file_id,schema) VALUES (${fileId}, ${schema}) ON CONFLICT (file_id) DO NOTHING;`;
     }
 
     beginTransaction() {

@@ -87,11 +87,14 @@ module.exports = class Changeset {
         });
     }
 
-    runChanges() {
+    runChanges(changeset) {
         return client.createTable().then(() => {
             let currentVersion = client.versions.fileId;
+            let targetVersion = changeset ? changeset.fileId : null;
             var changesets = client.changesetFiles.filter((item) => {
-                return item.fileId > currentVersion || !!item.parts;
+                return item.fileId > currentVersion 
+                    || (!!item.parts && item.parts.length && item.fileId === currentVersion)
+                    || (targetVersion && item.fileId >= targetVersion);
             }).sort((a, b) => {
                 if (a.version > b.version) {
                     return 1;
@@ -153,12 +156,13 @@ module.exports = class Changeset {
                 let parts = client.getParts(found.filepath);
                 if (parts.length > client.versions.part) {
                     found.parts = parts;
-                    return found;
                 }
             }
+            /* 
             throw new Error('Update target is same as current schema version');
-        } else if (targetVersion < currentVersion) {
+        else if (targetVersion < currentVersion) {
             throw new Error('Update target is behind current schema version');
+        } // targetting a version is the direct intent to run a changeset */
         }
         return found;
     }
@@ -193,11 +197,14 @@ module.exports = class Changeset {
                     query = client.getParts(filepath);
                 }
                 let part = 0;
-                //trying to recover from bad changeset
-                if (client.versions.part && client.versions.fileId === fileId) {
+                let size = query.length;
+                //trying to recover from bad changeset, if the part is less
+                //than the total parts we know the script was interrupted or updated
+                if (client.versions.fileId === fileId && client.versions.part 
+                        && client.versions.part < size ) {
                     part = client.versions.part;
                 }
-                while (part < query.length) {
+                while (part < size) {
                     yield client.runQuery(query[part], fileId, schema);
                     part += 1;
                     client.versions.part = part;
@@ -242,9 +249,11 @@ module.exports = class Changeset {
                 let changeset = client.checkFile();
                 log.info(`Updating current schema version: ${client.versions.fileId} -> ${changeset.fileId}`);
                 yield client.createTable();
-                return yield client.applyChangeset(changeset);
+                let q = client.getChangesetSql(changeset.fileId, changeset.schema);
+                return yield client.runQuery(q);
             } else if (client.config.targetFile) {
-                client.checkFile();
+                let changeset = client.checkFile();
+                return yield client.runChanges(changeset);
             }
             return yield client.runChanges();
         });
