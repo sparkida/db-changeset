@@ -1,9 +1,10 @@
 #!/usr/bin/env node
+'use strict';
 
 const commander = require('commander');
-const format = require('util').format;
 const moduleVersion = require('../package.json').version;
 const winston = require('winston');
+const isCli = require.main === module;
 const log = new winston.Logger({
     transports: [new winston.transports.Console({colorize: true})]
 });
@@ -11,13 +12,16 @@ const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 const getClient = (config) => {
-    let Driver = require(format('../modules/%s', config.dbConfig.dialect));
+    let Driver = require(path.resolve(path.join(__dirname, '..', 'lib', 'postgres')));
     return new Driver(config);
 };
 const run = (config) => {
     let client = getClient(config);
-    client.runScript()
-        .then((version) => {
+    let promise = client.runScript();
+    if (!isCli) {
+        return promise;
+    }
+    promise.then((version) => {
             log.info('success');
             process.exit();
         })
@@ -27,10 +31,11 @@ const run = (config) => {
         });
 };
 
-module.exports.run = run;
-module.exports.getClient = getClient;
+exports.run = run;
+exports.getClient = getClient;
 
-if (require.main === module) {
+if (isCli) {
+
     var ran = false;
     commander
         .version(moduleVersion)
