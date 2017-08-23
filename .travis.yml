@@ -3,20 +3,10 @@ dist: trusty
 language: node_js
 before_install:
   - sed -i 's/vm.vertebrae.io/localhost/g' config.sample.js
-  - docker run --name=cassandra
-        --env="CASSANDRA_BROADCAST_ADDRESS=127.0.0.1"
-        --env="CASSANDRA_LISTEN_ADDRESS=127.0.0.1"
-        --env="CASSANDRA_ENDPOINT_SNITCH=SimpleSnitch"
-        --env="CASSANDRA_VERSION=3.7"
-        --env="CASSANDRA_CONFIG=/etc/cassandra"
-        --net=host
-        -d vertebrae/cassandra:3.7.0
-        cassandra -f
-  - sleep 10
 addons:
-  postgresql: "9.5"
+  postgresql: '9.6'
 node_js:
-  - '7.4.0'
+  - '8.4.0'
 git:
   depth: 3
 notifications:

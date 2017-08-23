@@ -1,1 +1,2 @@
-bin/changeset.js
+'use strict';
+module.exports = require('./bin/changeset');
